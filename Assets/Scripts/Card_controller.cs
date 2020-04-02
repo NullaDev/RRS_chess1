@@ -2,52 +2,54 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.SceneManagement;
 
 public class Card_controller : MonoBehaviour
 {
+    class Change
+    {
+        public int which;//0为ATK 1为HP 2为HP_limit
+        public int trend;//0加1减
+        public int vl;//值
+    }
+    private List<Change> changes = new List<Change>();
     private SpriteRenderer spr;
 
+    private Card_type ctype;//卡牌数据载体
     private int type;//0为主站者所用卡牌，否则为敌人
-    //private int num;//编号,即图中的位置
-    [SerializeField] private int card_id;//是哪张牌，在场景切换时由主站者选择
+    //[SerializeField] private int card_id;//是哪张牌，在场景切换时由主站者选择
     [SerializeField] private int order;//在队列里的攻击顺序
-
-    [SerializeField] private bool defense = false;//是否在进行防御，1代表被选中为攻击对象，进行防御，0代表碰撞已结束，结束本次防御
-    [SerializeField] private bool attacked = false;//是否已攻击过，1代表在本轮已攻击过，0代表本轮还未攻击
-    [SerializeField] private bool back = true;//是否已完成动作归位，1代表在本位，0代表不在本位，在攻击/返回动作中
-    [SerializeField] private bool dead = false;//是否应死亡（应死亡不代表已销毁，要等待战斗系统发送销毁信号），1代表应死亡，0代表不应
-    [SerializeField] private bool destroy = false;//是否已接受战斗系统发回的销毁信号
-    [SerializeField] private bool pause = false;//暂停信号
-
-    [SerializeField] private string Describe;//描述
-    [SerializeField] private int Level;//等级
-    [SerializeField] private int ATK;//攻击力
-    [SerializeField] private int HP;//生命值
-
-    private int Level_limit;//等级上限
-    private int ATK_limit;//攻击力上限
-    private int HP_limit;//生命值上限
-
+    [SerializeField] private int eternal_order;//队列初始化时在队列里的攻击顺序，不会随着队列成员的增加或减少而改变
+    [SerializeField] private int HP_limit;//生命值上限
     [SerializeField] private Vector2 location;//本卡牌应在的位置，用于攻击后返回本位和位置重置
+
+    [SerializeField] private bool[] signal = new bool[5];//信号组，用于描述本卡牌目前的状态和控制行动流程
+    //信号0表示是否已攻击过，1代表在本轮已攻击过，0代表本轮还未攻击
+    //信号1表示是否在进行防御，1代表被选中为攻击对象，进行防御，0代表碰撞已结束，结束本次防御
+    //信号2表示是否已完成动作归位，1代表在本位，0代表不在本位，在攻击/返回动作中
+    //信号3表示是否应死亡（应死亡不代表已销毁，要等待战斗系统发送销毁信号），1代表应死亡，0代表不应
+    //信号4表示是否已接受战斗系统发回的销毁信号
+    private const int attacked = 0;
+    private const int defense = 1;
+    private const int back = 2;
+    private const int dead = 3;
+    private const int destroy = 4;
+    private bool pause = false;//暂停信号
+    private bool pause1 = false;//暂停信号
+
+    public int ATK_before;
+    public int HP_before;
+    public int HP_limit_before;
 
     //卡牌文本的底板
     private GameObject Describe_board;
     private GameObject Level_board;
     private GameObject ATK_board;
     private GameObject HP_board;
+    private GameObject Change_board;
 
-    //卡牌文本，canv是画布，obj是Gameobject类实体，text是对应的文本组件
+    //卡牌文本，canv是画布，Inform_text是文本组件的数组
     private GameObject canv;
-    private GameObject Describe_obj;
-    private GameObject Level_obj;
-    private GameObject ATK_obj;
-    private GameObject HP_obj;
-
-    private Text Describe_text;
-    private Text Level_text;
-    private Text ATK_text;
-    private Text HP_text;
+    private Text[] Inform_text = new Text[5];
 
     //调试用临时变量
     public int sb;
@@ -58,6 +60,21 @@ public class Card_controller : MonoBehaviour
 
     //卡面相关图片资源的根目录
     private string picturepath = "Card_face/";
+    private void Add_change(int wch,int num,int num_before)
+    {
+        if(num!=num_before)
+        {
+            Debug.Log("我是" + ctype.Describe + ",有数值变更" + wch + "的" + num_before + "to" + num);
+            Change change = new Change();
+            change.which = wch;
+            if (num < num_before)
+                change.trend = 0;
+            else
+                change.trend = 1;
+            change.vl = num - num_before;
+            changes.Add(change);
+        }
+    }
     private void Card_face_loading(GameObject g,string s)//加载卡面的方法，用于各个部分的图片加载
     {
         nimabi = s;
@@ -104,123 +121,160 @@ public class Card_controller : MonoBehaviour
         Card_face_loading(Describe_board, "describe");
         Describe_board.transform.position = new Vector2(transform.position.x,
             transform.position.y - (spr.bounds.size.y - Describe_board.GetComponent<SpriteRenderer>().bounds.size.y - 2* ATK_board.GetComponent<SpriteRenderer>().bounds.size.y ) / 2);
-       
+
+        Change_board = gameObject.transform.GetChild(4).gameObject;
+        Change_board.transform.position = gameObject.transform.position;
+
         //获取数值信息的gameobject
         canv = Instantiate(Resources.Load("Text/Canvas1") as GameObject);
-        Describe_obj = canv.transform.GetChild(0).gameObject;
-        Level_obj = canv.transform.GetChild(1).gameObject;
-        ATK_obj = canv.transform.GetChild(2).gameObject;
-        HP_obj = canv.transform.GetChild(3).gameObject;
-        
+
         //获取text组件
-        Describe_text = Describe_obj.GetComponent<Text>();
-        Level_text = Level_obj.GetComponent<Text>();
-        ATK_text = ATK_obj.GetComponent<Text>();
-        HP_text = HP_obj.GetComponent<Text>();
+        Inform_text = canv.GetComponentsInChildren<Text>();
 
         //设置文本信息
-        Describe_text.text = Describe;
-        Level_text.text = Level.ToString();
-        ATK_text.text = ATK.ToString();
-        HP_text.text = HP.ToString();
+        Inform_text[0].text = ctype.Describe;
+        Inform_text[1].text = ctype.Level.ToString();
+        Inform_text[2].text = ctype.ATK.ToString();
+        Inform_text[3].text = ctype.HP.ToString();
+        Inform_text[4].text = null;
 
         //设置初始数据
-        Level_limit = Level;
-        ATK_limit = ATK;
-        HP_limit = HP;
+        HP_limit = ctype.HP;
+        ATK_before = ctype.ATK;
+        HP_before = ctype.HP;
+        HP_limit_before = HP_limit;
         State_init();
     }
     void Start()
     {
         Invoke("Load",0.5f);//延迟0.5秒加载，给战斗系统初始化其它组件流夏时间
-        Interrupt(0.7f, false);//延迟0.7秒运行update，防止在加载成功之前运行出错
-        
+        Interrupt(0,0.7f, false);//延迟0.7秒运行update，防止在加载成功之前运行出错  
     }
 
     // Update is called once per frame
     void Update()
     {
-        //实时更新卡牌信息
-        Describe_text.text = Describe;
-        Level_text.text = Level.ToString();
-        ATK_text.text = ATK.ToString();
-        HP_text.text = HP.ToString();
-
-        //实时更新文本组件的位置，使其与底板位置保持一致
-        Describe_text.transform.position =  Camera.main.WorldToScreenPoint(Describe_board.transform.position);
-        Level_text.transform.position = Camera.main.WorldToScreenPoint(Level_board.transform.position);
-        ATK_text.transform.position = Camera.main.WorldToScreenPoint(ATK_board.transform.position);
-        HP_text.transform.position = Camera.main.WorldToScreenPoint(HP_board.transform.position);
-
-        if (pause) return;
-
-        if (destroy)
+        if (pause)
         {
-            //如果接受到销毁信号，延迟0.1秒销毁本卡牌实体和文本实体
-            Invoke("Boom",0.1f);
+            //Debug.Log("11111111111111111");
+            return;
         }
 
-        if (attacked == true && !(System.Math.Abs(transform.position.y) < System.Math.Abs(location.y)))
-        {   //如果已攻击过且已回到本位，设置速度为0，设置归为信号为1，设置渲染图层为普通卡牌（战斗中卡牌会在普通卡牌上方）
+        if (signal[back])
+            transform.position = location;
+
+        //实时更新卡牌信息
+        Inform_text[0].text = ctype.Describe;
+        Inform_text[1].text = ctype.Level.ToString();
+        Inform_text[2].text = ctype.ATK.ToString();
+        Inform_text[3].text = ctype.HP.ToString();
+
+        Add_change(0, ctype.ATK, ATK_before);
+        Add_change(1, ctype.HP, HP_before);
+        Add_change(2, HP_limit, HP_limit_before);
+            
+        ATK_before = ctype.ATK;
+        HP_before = ctype.HP;
+        HP_limit_before = HP_limit;
+
+        //实时更新文本底板的位置，使其跟踪卡牌本身，并保持相对位置不变
+        Level_board.transform.position = new Vector2(transform.position.x - (spr.bounds.size.x - Level_board.GetComponent<SpriteRenderer>().bounds.size.x) / 2,
+            transform.position.y + (spr.bounds.size.y - Level_board.GetComponent<SpriteRenderer>().bounds.size.y) / 2);
+
+        ATK_board.transform.position = new Vector2(transform.position.x - (spr.bounds.size.x - ATK_board.GetComponent<SpriteRenderer>().bounds.size.x) / 2,
+            transform.position.y - (spr.bounds.size.y - ATK_board.GetComponent<SpriteRenderer>().bounds.size.y) / 2);
+
+        HP_board.transform.position = new Vector2(transform.position.x + (spr.bounds.size.x - HP_board.GetComponent<SpriteRenderer>().bounds.size.x) / 2,
+            transform.position.y - (spr.bounds.size.y - HP_board.GetComponent<SpriteRenderer>().bounds.size.y) / 2);
+
+        Describe_board.transform.position = new Vector2(transform.position.x,
+            transform.position.y - (spr.bounds.size.y - Describe_board.GetComponent<SpriteRenderer>().bounds.size.y - ATK_board.GetComponent<SpriteRenderer>().bounds.size.y * 2) / 2);
+
+        Change_board.transform.position = gameObject.transform.position;
+
+        //实时更新文本组件的位置，使其与底板位置保持一致
+        Inform_text[0].transform.position =  Camera.main.WorldToScreenPoint(Describe_board.transform.position);
+        Inform_text[1].transform.position = Camera.main.WorldToScreenPoint(Level_board.transform.position);
+        Inform_text[2].transform.position = Camera.main.WorldToScreenPoint(ATK_board.transform.position);
+        Inform_text[3].transform.position = Camera.main.WorldToScreenPoint(HP_board.transform.position);
+        Inform_text[4].transform.position = Camera.main.WorldToScreenPoint(Change_board.transform.position);
+
+        if (signal[destroy])
+        {
+            //如果接受到销毁信号，延迟0.1秒销毁本卡牌实体和文本实体
+            //Invoke("Boom",0.1f);
+            Boom();
+        }
+
+        if (signal[attacked] && !(System.Math.Abs(transform.position.y) < System.Math.Abs(location.y)))
+        {   //如果已攻击过且已回到本位，设置速度为0，设置归位信号为1，设置渲染图层为普通卡牌（战斗中卡牌会在普通卡牌上方）
             gameObject.GetComponent<Rigidbody2D>().velocity = new Vector2(0,0);
             spr.sortingLayerName = "card_face";
             for(int j=0;j<4;j++)
             {
                 gameObject.transform.GetChild(j).GetComponent<SpriteRenderer>().sortingLayerName = "card_information";
             }
-            back = true;
+            signal[back] = true;
         }
-        
-        //实时更新文本底板的位置，使其跟踪卡牌本身，并保持相对位置不变
-        Level_board.transform.position = new Vector2(transform.position.x - (spr.bounds.size.x - Level_board.GetComponent<SpriteRenderer>().bounds.size.x) / 2,
-            transform.position.y + (spr.bounds.size.y - Level_board.GetComponent<SpriteRenderer>().bounds.size.y) / 2);
-        
-        ATK_board.transform.position = new Vector2(transform.position.x - (spr.bounds.size.x - ATK_board.GetComponent<SpriteRenderer>().bounds.size.x) / 2,
-            transform.position.y - (spr.bounds.size.y - ATK_board.GetComponent<SpriteRenderer>().bounds.size.y) / 2);
-        
-        HP_board.transform.position = new Vector2(transform.position.x + (spr.bounds.size.x - HP_board.GetComponent<SpriteRenderer>().bounds.size.x) / 2,
-            transform.position.y - (spr.bounds.size.y - HP_board.GetComponent<SpriteRenderer>().bounds.size.y) / 2);
-
-        Describe_board.transform.position = new Vector2(transform.position.x,
-            transform.position.y - (spr.bounds.size.y - Describe_board.GetComponent<SpriteRenderer>().bounds.size.y - ATK_board.GetComponent<SpriteRenderer>().bounds.size.y * 2) / 2);
+        if (changes.Count != 0)
+        {
+            if (pause1)
+                return;
+            Card_face_loading(Change_board, "change" + changes[changes.Count - 1].which + changes[changes.Count - 1].trend);//加载图片
+            //Debug.Log("我是" + ctype.Describe + ",请求加载图片" + "change" + changes[changes.Count - 1].which + changes[changes.Count - 1].trend);
+            Change_board.SetActive(true);
+            Debug.Log("我是" + ctype.Describe + ",数值发生改变，数值变化量为" + changes[changes.Count - 1].vl.ToString());
+            Inform_text[4].text = changes[changes.Count - 1].vl.ToString();
+            Interrupt(1,1, false);
+        } 
+        else
+        {
+            Inform_text[4].text = null;
+        }
     }
+    /*private void Change_end()
+    {
+        Change_board.SetActive(false);
+    }*/
     private void Boom()
     {
         //销毁卡牌，文本底板和文本模块
-        Debug.Log("I am" + card_id + " I 'm beeing destroyed soon");
+        Debug.Log("我是" + ctype.Describe + " 我即将被销毁");
         Destroy(canv);
         Destroy(gameObject);
     }
     public void State_init()
     {
         //信号初始化
-        attacked = false;
-        back = true;
-        dead = false;
-        defense = false;
+        for(int i = 0; i < 4;i++)
+        {
+            signal[i] = false;
+        }
+        signal[back] = true;
     }
     private void OnTriggerEnter2D(Collider2D collision)
     {
         //碰撞时执行，结算伤害
         sb = 1000;
         Card_controller enemy = collision.gameObject.GetComponent<Card_controller>();//获取敌人
-        HP = HP - enemy.Gs_atk;//扣血
-        if (!(HP > 0))
+        ctype.HP = ctype.HP - enemy.Gs_ctype.ATK;//扣血
+        Debug.Log("我是" + ctype.Describe + " 我因碰撞而受到"+ enemy.Gs_ctype.ATK+"点伤害");
+        if (!(ctype.HP > 0))
         {
             //如果血扣光，停止运动，设置死亡信号为1，等待销毁。
             gameObject.GetComponent<Rigidbody2D>().velocity = new Vector2(0, 0);
-            dead = true;
-            Debug.Log("I am" + card_id + " I'll die");
+            signal[dead] = true;
+            Debug.Log("我是" + ctype.Describe+ " 我即将阵亡");
         }
         else
         {
             //如果没死
-            if (!defense && !back)
+            if (!signal[defense] && !signal[back])
             {
                 //如果本次战斗中本张卡牌为攻击方
-                attacked = true;//标记为已攻击
+                signal[attacked] = true;//标记为已攻击
                 gameObject.GetComponent<Rigidbody2D>().velocity = new Vector2((location.x - transform.position.x) / 2, (location.y - transform.position.y) / 2);//归位移动
-                Debug.Log("I am" + card_id + " I have already attacked but not back");
+                Debug.Log("我是" + ctype.Describe + " 本次攻击结束，我即将归位");
             }
             else
             {
@@ -229,82 +283,74 @@ public class Card_controller : MonoBehaviour
             } 
         }
         gameObject.GetComponent<BoxCollider2D>().enabled = false;
+
     }
     private void dedefense()
     {
-        defense = false;
-        Debug.Log("I am" + card_id + " I have fnishied my defense");
+        signal[defense] = false;
+        Debug.Log("我是" + ctype.Describe + "本次防御结束");
     }
-    public void Interrupt(float time, bool forever)//中断，详见战斗系统类
+    public void Interrupt(int p, float time, bool forever)//中断，详见战斗系统类
     {
-        pause = true;
+        if (p == 0)
+            pause = true;
+        else if (p == 1)
+            pause1 = true;
         if (!forever)
             Invoke("Interrupt_end", time);
     }
     private void Interrupt_end()
     {
+        if(changes.Count!=0)
+            changes.RemoveAt(changes.Count - 1);
+        Change_board.SetActive(false);
         pause = false;
+        pause1 = false;
     }
     //private成员的get,set方法
+    public void Setsignal(int which,bool b)
+    {
+        if (which > -1 && which < 5)
+            signal[which] = b;
+        else
+        {
+            //异常
+        }
+    }
+    public bool Getsignal(int which)
+    {
+        if (which > -1 && which < 5)
+            return signal[which];
+        else
+        {
+            //异常
+            return false;
+        }
+    }
     public int Gs_type
     {
         get { return type; }
         set { type = value; }
-    }
-    public int Gs_id
-    {
-        get { return card_id; }
-        set { card_id = value; }
     }
     public int Gs_order
     {
         get { return order; }
         set { order = value; }
     }
-    public string Gs_describe
+    public int Gs_eternal_order
     {
-        get { return Describe; }
-        set { Describe = value; }
+        get { return eternal_order; }
+        set { eternal_order = value; }
     }
-    public int Gs_level
+    public Card_type Gs_ctype
     {
-        get { return Level; }
-        set { Level = value; }
+        get { return ctype; }
+        set { ctype = value; }
     }
-    public int Gs_atk
+    public int Gs_hp_limit
     {
-        get { return ATK; }
-        set { ATK = value; }
-    }
-    public int Gs_hp
-    {
-        get { return HP; }
-        set { HP = value; }
-    }
-    public bool Gs_defense
-    {
-        get { return defense; }
-        set { defense = value; }
-    }
-    public bool Gs_attacked
-    {
-        get { return attacked; }
-        set { attacked = value; }
-    }
-    public bool Gs_back
-    {
-        get { return back; }
-        set { back = value; }
-    }
-    public bool Gs_dead
-    {
-        get { return dead; }
-        set { dead = value; }
-    }
-    public bool Gs_destroy
-    {
-        get { return destroy; }
-        set { destroy = value; }
+        get { return HP_limit; }
+        set { HP_limit = value; }
     }
     public void Set_lct(Vector2 l)
     { this.location = new Vector2(l.x, l.y); }

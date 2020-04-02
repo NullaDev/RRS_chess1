@@ -30,6 +30,7 @@ public class Data_transmission : MonoBehaviour
         {
             card_queue[i] = 0;
         }
+
     }
     public void Enemy_setting(int[] enemy_num)//根据地图传递的信息设置敌方卡牌的ID,after meeting
     {
@@ -70,13 +71,17 @@ public class Data_transmission : MonoBehaviour
         DontDestroyOnLoad(gameObject);//此对象在场景切换时不会消失
         ci = new Card_initializing();
         //以下是用于测试的信息，后期会由数据库和阵容选择界面代替
-        p_amt = 2;
-        e_amt = 3;
+        p_amt = 4;
+        e_amt = 5;
         card_queue[0] = 0;
         card_queue[1] = 1;
-        enemy_queue[0] = 3;
-        enemy_queue[1] = 2;
-        enemy_queue[2] = 4;
+        card_queue[2] = 2;
+        card_queue[3] = 3;
+        enemy_queue[0] = 4;
+        enemy_queue[1] = 5;
+        enemy_queue[2] = 6;
+        enemy_queue[3] = 7;
+        enemy_queue[4] = 8;
     }
     
     // Update is called once per frame

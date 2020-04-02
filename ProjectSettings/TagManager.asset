@@ -56,3 +56,6 @@ TagManager:
   - name: battling_card_information
     uniqueID: 2524024441
     locked: 0
+  - name: change_information
+    uniqueID: 1588604311
+    locked: 0
